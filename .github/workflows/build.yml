@@ -1,0 +1,53 @@
+name: Compilar mod
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descomprimir el proyecto
+        run: |
+          ZIP=$(ls -S *.zip | head -1)
+          echo "Usando: $ZIP"
+          mkdir proyecto
+          unzip -q "$ZIP" -d proyecto
+          DIR=$(dirname "$(find proyecto -name build.gradle | head -1)")
+          echo "Carpeta del proyecto: $DIR"
+          ls "$DIR"
+          echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.8
+
+      - name: Compilar
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle build --no-daemon --stacktrace
+
+      - name: Comprobar el contenido del .jar
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          ls -la build/libs
+          unzip -l build/libs/combatgods-*.jar | head -50
+          unzip -l build/libs/combatgods-*.jar | grep -q "META-INF/mods.toml" || { echo "FALTA mods.toml dentro del jar"; exit 1; }
+          unzip -l build/libs/combatgods-*.jar | grep -q "com/combatgods/CombatGodsMod.class" || { echo "FALTA la clase principal dentro del jar"; exit 1; }
+
+      - name: Publicar el .jar directo (sin zip) en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ultima-version
+          name: Ultima version (.jar directo)
+          prerelease: true
+          files: ${{ env.PROJECT_DIR }}/build/libs/combatgods-*.jar
